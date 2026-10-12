@@ -1,5 +1,6 @@
-import { MessageParseError, toPgmqError } from "./errors.js";
+import { toPgmqError } from "./errors.js";
 import type { Executor } from "./executor.js";
+import { toMessage } from "./parse.js";
 import { decodeBigint, decodeBoolean, decodeMessages, decodeMetrics, decodeMsgIds, type RawMessage } from "./rows.js";
 import { sleep } from "./sleep.js";
 import * as sql from "./sql.js";
@@ -9,7 +10,6 @@ import {
   encodeJson,
   encodeMsgId,
   encodeMsgIds,
-  isRecord,
   validateInt,
   validateQueueName,
   validateSecondsOrDate,
@@ -369,26 +369,8 @@ export class Queue<T> {
     }
   }
 
-  /** Checks the headers and parses the body of a message read from the database. */
   #toMessage(raw: RawMessage): Message<T> {
-    const { headers } = raw;
-    if (headers !== null && !isRecord(headers)) {
-      throw new MessageParseError(this.name, raw.msgId, "its headers are not a JSON object");
-    }
-    return { ...raw, headers, message: this.#parseBody(raw) };
-  }
-
-  #parseBody(raw: RawMessage): T {
-    if (this.#parse === undefined) {
-      // No parse function: the caller chose `T` and vouched for the queue's contents (see QueueOptions).
-      return raw.message as T;
-    }
-    try {
-      return this.#parse(raw.message);
-    } catch (cause) {
-      const reason = cause instanceof Error ? cause.message : String(cause);
-      throw new MessageParseError(this.name, raw.msgId, reason, { cause });
-    }
+    return toMessage(this.name, raw, this.#parse);
   }
 }
 

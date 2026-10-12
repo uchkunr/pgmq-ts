@@ -145,6 +145,22 @@ export function setVt(db: Executor, queue: string, msgId: string, vt: number | D
         FROM pgmq.set_vt(${queue}::text, ${msgId}::text::bigint, ${vt}::timestamptz)`;
 }
 
+/**
+ * Sends a copy of message `msgId` of `queue` to `target`, with its body and headers exactly as
+ * stored: they go from table to table without passing through JavaScript, where numbers beyond
+ * double precision would be rounded. Used by the worker's dead-letter move, inside a transaction
+ * that then deletes the original.
+ *
+ * `pgmq.set_vt` is the PGMQ function that returns one message by id; it also renews the lease
+ * (`vt` seconds) while the move runs. Returns no row if the message no longer exists.
+ */
+export function copyMessage(db: Executor, queue: string, msgId: string, target: string, vt: number): PromiseLike<unknown> {
+  return db`
+    SELECT sent.msg_id::text AS msg_id
+    FROM pgmq.set_vt(${queue}::text, ${msgId}::text::bigint, ${vt}::int) AS m
+    CROSS JOIN LATERAL pgmq.send(${target}::text, m.message, m.headers, ${0}::int) AS sent(msg_id)`;
+}
+
 // Acknowledging. `msgId` is decimal text; `msgIds` is a Postgres array literal such as {1,2,3}.
 
 export function deleteOne(db: Executor, queue: string, msgId: string): PromiseLike<unknown> {

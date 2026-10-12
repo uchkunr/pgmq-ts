@@ -11,3 +11,13 @@ export type {
   SendOptions,
 } from "./queue.js";
 export type { Message, MessageHeaders, QueueInfo, QueueMetrics } from "./types.js";
+export { Worker } from "./worker.js";
+export type {
+  BackoffOptions,
+  Handler,
+  HandlerContext,
+  RunOptions,
+  WorkerErrorContext,
+  WorkerOptions,
+  WorkerStage,
+} from "./worker.js";
