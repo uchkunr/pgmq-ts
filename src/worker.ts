@@ -42,6 +42,7 @@ export type WorkerStage = "read" | "handle" | "ack" | "retry" | "dead-letter" | 
 
 /** Passed to `onError` along with the error. */
 export interface WorkerErrorContext {
+  /** What the worker was doing. See {@link WorkerStage}. */
   readonly stage: WorkerStage;
   /** The message involved, if the error concerns one. */
   readonly msgId?: bigint;

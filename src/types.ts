@@ -24,16 +24,19 @@ export interface Message<T> {
 
 /** A queue, as listed by `pgmq.listQueues()`. */
 export interface QueueInfo {
+  /** The queue name, as given when it was created. */
   readonly queueName: string;
   /** True for queues created with PGMQ's `create_partitioned` (pg_partman). */
   readonly isPartitioned: boolean;
   /** True for queues created with `createUnlogged`. */
   readonly isUnlogged: boolean;
+  /** When the queue was created. */
   readonly createdAt: Date;
 }
 
 /** A point-in-time snapshot of a queue, from `queue.metrics()` or `pgmq.metricsAll()`. */
 export interface QueueMetrics {
+  /** The queue these numbers describe. */
   readonly queueName: string;
   /** Messages in the queue, visible or not. */
   readonly queueLength: bigint;
