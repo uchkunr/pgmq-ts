@@ -1,0 +1,44 @@
+{
+  "name": "pgmq-ts",
+  "version": "0.1.0",
+  "description": "Type-safe PGMQ (Postgres Message Queue) client for Bun. Every operation can join your own transaction.",
+  "license": "MIT",
+  "author": "Uchkun Rakhimov",
+  "keywords": [
+    "pgmq",
+    "postgres",
+    "postgresql",
+    "queue",
+    "message-queue",
+    "outbox",
+    "bun"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target bun --format esm && tsc -p tsconfig.build.json",
+    "prepublishOnly": "bun run typecheck && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "^7.0.2"
+  }
+}

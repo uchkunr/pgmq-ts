@@ -1,0 +1,25 @@
+# Local PGMQ for development and the runnable examples.
+#   docker compose up -d --wait     (or: scripts/db.sh start)
+#   docker compose down -v          (or: scripts/db.sh stop)
+#
+# Connection string: postgres://postgres:postgres@localhost:54329/postgres
+# Override the image tag or host port with PGMQ_IMAGE_TAG / PGMQ_PORT.
+name: pgmq-ts
+
+services:
+  postgres:
+    image: ghcr.io/pgmq/pg18-pgmq:${PGMQ_IMAGE_TAG:-v1.13.0}
+    container_name: pgmq-ts-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "${PGMQ_PORT:-54329}:5432"
+    volumes:
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 1s
+      timeout: 3s
+      retries: 30

@@ -1,0 +1,30 @@
+{
+  // Type-checks the library, the examples, and the scripts. `tsc --noEmit` is the quality gate.
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "types": ["bun"],
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    // Forces explicit types on everything exported, so the public API never depends on inference.
+    "declaration": true,
+    "isolatedDeclarations": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "examples", "scripts"]
+}

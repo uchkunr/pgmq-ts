@@ -1,0 +1,11 @@
+{
+  // Emits only the .d.ts files for dist/. The JavaScript comes from `bun build`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}

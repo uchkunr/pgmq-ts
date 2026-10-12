@@ -1,0 +1,2 @@
+# Keep LF everywhere so scripts/db.sh runs on every platform, whatever core.autocrlf says.
+* text=auto eol=lf
