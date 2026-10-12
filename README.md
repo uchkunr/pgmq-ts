@@ -13,6 +13,8 @@ await sql.begin(async (tx) => {
 });
 ```
 
+![A transaction that throws leaves no order row and no message; the same transaction without the throw commits both](https://raw.githubusercontent.com/uchkunr/pgmq-ts/main/media/pgmq-ts-demo.gif)
+
 Requires Bun 1.2.23+ and Postgres with PGMQ 1.10.0+ (tested up to 1.13.0).
 
 ## Quickstart
