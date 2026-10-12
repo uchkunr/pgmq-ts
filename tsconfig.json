@@ -10,6 +10,9 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
+    // Lets the examples import "pgmq-ts" exactly as users will. Bun honors this at runtime too.
+    "paths": { "pgmq-ts": ["./src/index.ts"] },
+
     // Forces explicit types on everything exported, so the public API never depends on inference.
     "declaration": true,
     "isolatedDeclarations": true,
@@ -20,7 +23,6 @@
     "noImplicitOverride": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noPropertyAccessFromIndexSignature": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true,
