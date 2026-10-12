@@ -56,7 +56,8 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ matrix.bun }}
-      - run: bun install --frozen-lockfile
+      # No `bun install`: the library has no runtime dependencies, and the examples import
+      # "pgmq-ts" through tsconfig paths. (Bun 1.2 also cannot read the newer bun.lock format.)
       - name: Enable the pgmq extension
         run: docker exec ${{ job.services.postgres.id }} psql -h 127.0.0.1 -U postgres -c "CREATE EXTENSION IF NOT EXISTS pgmq"
       - name: Run examples
