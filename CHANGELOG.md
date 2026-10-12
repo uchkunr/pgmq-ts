@@ -2,7 +2,19 @@
 
 All notable changes to this project are documented here, by hand. Versions follow [Semantic Versioning](https://semver.org).
 
-## 0.1.0 (unreleased)
+## 0.1.2 (2026-10-12)
+
+Documentation only; the code is identical to 0.1.0.
+
+### Changed
+
+- README: a demo GIF of a transaction that rolls back (no row, no message) and then commits (both).
+
+## 0.1.1
+
+Skipped. An earlier package with this name published and unpublished 0.1.1 in 2024, and npm never reuses a version number.
+
+## 0.1.0 (2026-10-12)
 
 First release. Requires Bun 1.2.23 or later and PGMQ 1.10.0 or later (tested up to 1.13.0).
 
