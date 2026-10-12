@@ -1,12 +1,14 @@
 import { MessageParseError, toPgmqError } from "./errors.js";
 import type { Executor } from "./executor.js";
 import { decodeBigint, decodeBoolean, decodeMessages, decodeMetrics, decodeMsgIds, type RawMessage } from "./rows.js";
+import { sleep } from "./sleep.js";
 import * as sql from "./sql.js";
 import type { Message, MessageHeaders, QueueMetrics } from "./types.js";
 import {
   encodeHeaders,
   encodeJson,
   encodeMsgId,
+  encodeMsgIds,
   isRecord,
   validateInt,
   validateQueueName,
@@ -37,6 +39,17 @@ export interface SendOptions {
   readonly headers?: MessageHeaders;
 }
 
+/** Options for {@link Queue.sendBatch}. */
+export interface SendBatchOptions {
+  /** Applies to every message of the batch. See {@link SendOptions.delay}. Default 0. */
+  readonly delay?: number | Date;
+  /**
+   * Headers for each message, in the same order as the messages: one entry per message, `null`
+   * for a message without headers. Leave out to send every message without headers.
+   */
+  readonly headers?: readonly (MessageHeaders | null)[];
+}
+
 /** Options for {@link Queue.read}. */
 export interface ReadOptions {
   /**
@@ -45,6 +58,22 @@ export interface ReadOptions {
    */
   readonly vt: number;
   /** The maximum number of messages to read. Default 1. */
+  readonly qty?: number;
+}
+
+/** Options for {@link Queue.readWithPoll}. */
+export interface ReadWithPollOptions extends ReadOptions {
+  /** Give up and return an empty array after this many whole seconds. Default 5. */
+  readonly maxPollSeconds?: number;
+  /** Milliseconds to wait between reads while the queue is empty. Default 100. */
+  readonly pollIntervalMs?: number;
+  /** Stops polling. The call then rejects with `signal.reason`. */
+  readonly signal?: AbortSignal;
+}
+
+/** Options for {@link Queue.pop}. */
+export interface PopOptions {
+  /** The maximum number of messages to pop. Default 1. */
   readonly qty?: number;
 }
 
@@ -162,6 +191,38 @@ export class Queue<T> {
   }
 
   /**
+   * Sends several messages in one statement. Wraps `pgmq.send_batch`.
+   *
+   * The batch is atomic: every message is sent, or none is. An empty array sends nothing and
+   * returns an empty array without a query.
+   *
+   * @returns The new message ids, in the same order as `messages`.
+   * @throws {QueueNotFoundError} If the queue does not exist.
+   */
+  async sendBatch(messages: readonly T[], options: SendBatchOptions = {}): Promise<bigint[]> {
+    if (!Array.isArray(messages)) {
+      throw new TypeError("messages must be an array");
+    }
+    const delay = validateSecondsOrDate("delay", options.delay ?? 0);
+    let headers: string | null = null;
+    if (options.headers !== undefined) {
+      if (!Array.isArray(options.headers) || options.headers.length !== messages.length) {
+        throw new RangeError(
+          `headers must have one entry per message: got ${describeLength(options.headers)} for ${messages.length} messages`,
+        );
+      }
+      headers = jsonArray(options.headers, (h, i) => (h === null ? "null" : encodeHeaders(h, `headers[${i}]`)));
+    }
+    const bodies = jsonArray(messages, (message, i) => encodeJson(message, `messages[${i}]`));
+    if (messages.length === 0) {
+      return [];
+    }
+    return this.#run("pgmq.send_batch", async () =>
+      decodeMsgIds(await sql.sendBatch(this.#db, this.name, bodies, headers, delay)),
+    );
+  }
+
+  /**
    * Reads up to `qty` messages and makes them invisible to other readers for `vt` seconds.
    * Wraps `pgmq.read`. Returns immediately, with an empty array if no message is visible.
    *
@@ -180,6 +241,77 @@ export class Queue<T> {
   }
 
   /**
+   * Like {@link Queue.read}, but if the queue is empty, keeps reading every `pollIntervalMs`
+   * until a message arrives or `maxPollSeconds` pass. Returns the first non-empty read, or an
+   * empty array on timeout.
+   *
+   * The polling loop runs here rather than in PGMQ's `read_with_poll`, because Bun cannot cancel
+   * a query that is already running: a server-side poll would hold the connection, and ignore
+   * `signal`, for up to `maxPollSeconds`. Here an abort takes effect immediately, and messages
+   * that a read has already made invisible are always returned, never dropped.
+   *
+   * @throws The `signal`'s reason, if it aborts first.
+   * @throws {QueueNotFoundError} If the queue does not exist.
+   * @throws {MessageParseError} See {@link Queue.read}.
+   */
+  async readWithPoll(options: ReadWithPollOptions): Promise<Message<T>[]> {
+    const vt = validateInt("vt", options.vt, 0);
+    const qty = validateInt("qty", options.qty ?? 1, 1);
+    const maxPollSeconds = validateInt("maxPollSeconds", options.maxPollSeconds ?? 5, 0);
+    const pollIntervalMs = validateInt("pollIntervalMs", options.pollIntervalMs ?? 100, 1);
+    const { signal } = options;
+
+    const deadline = performance.now() + maxPollSeconds * 1000;
+    for (;;) {
+      signal?.throwIfAborted();
+      const messages = await this.read({ vt, qty });
+      if (messages.length > 0) {
+        return messages;
+      }
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) {
+        return [];
+      }
+      await sleep(Math.min(pollIntervalMs, remaining), signal);
+    }
+  }
+
+  /**
+   * Reads up to `qty` messages and deletes them in the same statement. Wraps `pgmq.pop`.
+   *
+   * This is at-most-once delivery: a message is gone as soon as `pop` returns it, so if your
+   * process crashes before handling it, it is lost. Prefer `read` plus `delete` unless losing a
+   * message is acceptable. Inside a transaction, a rollback restores popped messages.
+   *
+   * @throws {QueueNotFoundError} If the queue does not exist.
+   * @throws {MessageParseError} If `parse` rejects a message. Every message of that call has
+   *   already been deleted; run `pop` in a transaction if they must survive this.
+   */
+  async pop(options: PopOptions = {}): Promise<Message<T>[]> {
+    const qty = validateInt("qty", options.qty ?? 1, 1);
+    const raw = await this.#run("pgmq.pop", async () => decodeMessages(await sql.pop(this.#db, this.name, qty)));
+    return raw.map((message) => this.#toMessage(message));
+  }
+
+  /**
+   * Changes when a message becomes visible again. Wraps `pgmq.set_vt`.
+   *
+   * Use it to extend the lease of a message that takes longer than expected, to retry it later
+   * (backoff), or with `0` to release it to other readers right away.
+   *
+   * @param vt Whole seconds from now, or an absolute `Date`.
+   * @returns The updated message, or `null` if no message has that id.
+   * @throws {MessageParseError} If `parse` rejects the updated message. Its visibility timeout
+   *   has been changed regardless.
+   */
+  async setVt(msgId: bigint, vt: number | Date): Promise<Message<T> | null> {
+    const id = encodeMsgId(msgId);
+    const when = validateSecondsOrDate("vt", vt);
+    const [raw] = await this.#run("pgmq.set_vt", async () => decodeMessages(await sql.setVt(this.#db, this.name, id, when)));
+    return raw === undefined ? null : this.#toMessage(raw);
+  }
+
+  /**
    * Deletes a message for good. Wraps `pgmq.delete`.
    *
    * @returns `true` if the message was deleted, `false` if no message has that id.
@@ -187,6 +319,20 @@ export class Queue<T> {
   async delete(msgId: bigint): Promise<boolean> {
     const id = encodeMsgId(msgId);
     return this.#run("pgmq.delete", async () => decodeBoolean(await sql.deleteOne(this.#db, this.name, id), "deleted"));
+  }
+
+  /**
+   * Deletes several messages in one statement. Wraps `pgmq.delete` (batch form).
+   * An empty array returns an empty array without a query.
+   *
+   * @returns The ids that were deleted. Ids with no matching message are left out.
+   */
+  async deleteBatch(msgIds: readonly bigint[]): Promise<bigint[]> {
+    const ids = encodeMsgIds(msgIds);
+    if (msgIds.length === 0) {
+      return [];
+    }
+    return this.#run("pgmq.delete", async () => decodeMsgIds(await sql.deleteMany(this.#db, this.name, ids)));
   }
 
   /**
@@ -198,6 +344,20 @@ export class Queue<T> {
   async archive(msgId: bigint): Promise<boolean> {
     const id = encodeMsgId(msgId);
     return this.#run("pgmq.archive", async () => decodeBoolean(await sql.archiveOne(this.#db, this.name, id), "archived"));
+  }
+
+  /**
+   * Archives several messages in one statement. Wraps `pgmq.archive` (batch form).
+   * An empty array returns an empty array without a query.
+   *
+   * @returns The ids that were archived. Ids with no matching message are left out.
+   */
+  async archiveBatch(msgIds: readonly bigint[]): Promise<bigint[]> {
+    const ids = encodeMsgIds(msgIds);
+    if (msgIds.length === 0) {
+      return [];
+    }
+    return this.#run("pgmq.archive", async () => decodeMsgIds(await sql.archiveMany(this.#db, this.name, ids)));
   }
 
   /** Runs one database operation and converts whatever it throws into a {@link PgmqError}. */
@@ -230,4 +390,13 @@ export class Queue<T> {
       throw new MessageParseError(this.name, raw.msgId, reason, { cause });
     }
   }
+}
+
+/** Builds JSON array text from values that `encode` turns into JSON text one by one. */
+function jsonArray<V>(values: readonly V[], encode: (value: V, index: number) => string): string {
+  return `[${values.map(encode).join(",")}]`;
+}
+
+function describeLength(value: unknown): string {
+  return Array.isArray(value) ? `${value.length} headers` : `headers that are not an array`;
 }
