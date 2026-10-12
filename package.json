@@ -4,6 +4,14 @@
   "description": "Type-safe PGMQ (Postgres Message Queue) client for Bun. Every operation can join your own transaction.",
   "license": "MIT",
   "author": "Uchkun Rakhimov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uchkunr/pgmq-ts.git"
+  },
+  "homepage": "https://github.com/uchkunr/pgmq-ts#readme",
+  "bugs": {
+    "url": "https://github.com/uchkunr/pgmq-ts/issues"
+  },
   "keywords": [
     "pgmq",
     "postgres",

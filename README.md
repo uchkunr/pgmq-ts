@@ -1,5 +1,7 @@
 # pgmq-ts
 
+[![CI](https://github.com/uchkunr/pgmq-ts/actions/workflows/ci.yml/badge.svg)](https://github.com/uchkunr/pgmq-ts/actions/workflows/ci.yml)
+
 A type-safe [PGMQ](https://github.com/pgmq/pgmq) client for [Bun](https://bun.com), built on Bun's SQL client, with no runtime dependencies.
 
 Every operation can run inside your own transaction, so a row and the message about it commit or roll back together:

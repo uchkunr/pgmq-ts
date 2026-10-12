@@ -16,3 +16,4 @@ First release. Requires Bun 1.2.23 or later and PGMQ 1.10.0 or later (tested up 
 - Typed errors: `PgmqError`, `QueueNotFoundError`, `InvalidQueueNameError`, `MessageParseError`.
 - `Worker`: concurrency, batch size, visibility timeout, poll interval, delete or archive on success, retries by `readCount` with optional exponential backoff, an atomic dead-letter queue (or archive), and graceful shutdown with a timeout.
 - Runnable examples in `examples/`, a Docker Compose setup, and `scripts/db.sh`.
+- GitHub Actions CI: typecheck, build, and package check, plus every example against PGMQ 1.10.0 and 1.13.0 on Bun 1.2.23 and latest.

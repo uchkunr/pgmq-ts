@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run build
+      - name: Check package contents
+        run: npm pack --dry-run
+
+  examples:
+    # Every example asserts its own claims, so a passing run is a behavioral check against real PGMQ.
+    name: Examples (PGMQ ${{ matrix.pgmq }}, Bun ${{ matrix.bun }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pgmq: [v1.10.0, v1.13.0] # oldest supported, latest
+        bun: [1.2.23, latest] # oldest supported, latest
+    services:
+      postgres:
+        image: ghcr.io/pgmq/pg18-pgmq:${{ matrix.pgmq }}
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 54329:5432
+        # Check over TCP: during first-time init, Postgres only listens on its Unix socket.
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:54329/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ matrix.bun }}
+      - run: bun install --frozen-lockfile
+      - name: Enable the pgmq extension
+        run: docker exec ${{ job.services.postgres.id }} psql -h 127.0.0.1 -U postgres -c "CREATE EXTENSION IF NOT EXISTS pgmq"
+      - name: Run examples
+        run: |
+          for example in examples/*.ts; do
+            echo "::group::$example"
+            bun "$example"
+            echo "::endgroup::"
+          done
